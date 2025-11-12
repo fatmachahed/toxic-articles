@@ -1,0 +1,57 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: toxic_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  scraper:
+    build: .
+    container_name: toxic_scraper
+    command: python -m src.scraper.scrape
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_DB=toxic_news
+    depends_on:
+      - mongodb
+
+  predictor:
+    build: .
+    container_name: toxic_predictor
+    command: python -m src.analytics.analytics
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_DB=toxic_news
+    depends_on:
+      - mongodb
+      - scraper
+
+  notebook_runner:
+    build: .
+    container_name: toxic_notebook_runner
+    command: >
+      papermill src/notebooks/analyse_toxicite.ipynb
+                src/notebooks/analyse_toxicite_output.ipynb
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_DB=toxic_news
+    depends_on:
+      - predictor
+
+  api:
+    build: .
+    container_name: toxic_api
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_DB=toxic_news
+    depends_on:
+      - mongodb
+      - predictor
+
+volumes:
+  mongo_data:
